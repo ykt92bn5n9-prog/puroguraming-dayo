@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ドリトル完全再現環境</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            margin: 0; padding: 0; font-family: sans-serif;
+            background-color: #f0f0f0; display: flex; flex-direction: column; height: 100vh;
+        }
+        #menu-bar {
+            background-color: #ffffff; border-bottom: 1px solid #ccc;
+            padding: 5px 10px; display: flex; align-items: center; gap: 10px;
+        }
+        #menu-bar button {
+            padding: 4px 12px; font-size: 14px; background-color: #fff;
+            border: 1px solid #bbb; border-radius: 3px; cursor: pointer;
+        }
+        #menu-bar button:hover { background-color: #eee; }
+        #server-status { font-size: 13px; color: #333; margin-left: 10px; font-weight: bold; }
+
+        #main-container { display: flex; flex: 1; overflow: hidden; }
+        #editor-container { flex: 1; background-color: #ffffff; border-right: 2px solid #ccc; display: flex; }
+        #line-number {
+            width: 30px; background-color: #e0e0e0; border-right: 1px solid #ccc;
+            text-align: center; padding-top: 10px; font-family: monospace; font-size: 16px; color: #666; user-select: none;
+        }
+        #code-input {
+            flex: 1; border: none; outline: none; padding: 10px;
+            font-size: 16px; font-family: monospace; resize: none; line-height: 1.5;
+        }
+        
+        /* 右側：実行ステージ（自由配置エリア） */
+        #stage {
+            width: 50%; background-color: #ffffff; position: relative; padding: 20px;
+        }
+        /* 作成されるボタンやフィールドのスタイル */
+        .dr-button { padding: 4px 15px; font-size: 14px; margin-right: 10px; cursor: pointer; }
+        .dr-field { padding: 4px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px; width: 150px; }
+    </style>
+</head>
+<body>
+
+    <div id="menu-bar">
+        <button onclick="runDolittle()">実行</button>
+        <button onclick="alert('保存機能')">保存</button>
+        <button onclick="alert('読込機能')">読込</button>
+        <label style="font-size: 14px; cursor: pointer;"><input type="checkbox" id="server-checkbox" onchange="toggleServer(this)"> server</label>
+        <span id="server-status">オフライン</span>
+        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.gui(alpha)</span>
+    </div>
+
+    <div id="main-container">
+        <div id="editor-container">
+            <div id="line-number">1</div>
+            <textarea id="code-input" placeholder="ここにドリトルのコードを書いてね"></textarea>
+        </div>
+        <div id="stage" id="stage"></div>
+    </div>
+
+    <script>
+        const stage = document.getElementById("stage");
+
+        // オブジェクト（変数）を記憶する場所
+        let objects = {};
+        let lastReceivedMsg = "まだデータが届いていません";
+
+        // 通信用
+        let peer = null;
+        let connection = null;
+
+        // 初期コードのセット（画像と同じものをあらかじめ入れておきます）
+        document.getElementById("code-input").value = 
+`サーバー！“localhost” 接続。
+受信ボタン＝ボタン！“受信” 作る。
+表示＝フィールド！ 作る。
+受信ボタン：動作＝「
+　受信メッセージ＝サーバー！“msg” 読む。
+　表示！（受信メッセージ）書く。
+」。`;
+
+        // サーバー機能（前回のシステムを流用）
+        function toggleServer(checkbox) {
+            const statusText = document.getElementById("server-status");
+            if (checkbox.checked) {
+                statusText.innerText = "起動中...";
+                peer = new Peer();
+                peer.on('open', (id) => { statusText.innerHTML = `起動中（ID: <b style="color:blue;">${id}</b>）`; });
+                peer.on('connection', (conn) => {
+                    statusText.innerText = "接続中";
+                    conn.on('data', (data) => {
+                        lastReceivedMsg = data; // 届いたデータを保存
+                    });
+                });
+            } else {
+                if (peer) peer.destroy();
+                statusText.innerText = "オフライン";
+            }
+        }
+
+        // ドリトル風コードの解析・実行
+        function runDolittle() {
+            // ステージを一旦きれいにする
+            stage.innerHTML = "";
+            objects = {};
+
+            // テキストエリアからコードを取得し、行ごとに分解
+            const rawCode = document.getElementById("code-input").value;
+            
+            // 「」の中身を改行で壊さないように、一旦「」の塊を取り出す
+            // 今回はシンプルに、行ごとの処理を行います
+            const lines = rawCode.replace(/[\n\r]/g, "").split("。");
+
+            let actionBlock = "";
+            let insideBlock = false;
+            let actionTarget = "";
+
+            lines.forEach(line => {
+                let trimmed = line.trim();
+                if (!trimmed) return;
+
+                // 動作のブロック「 の始まりを検知
+                if (trimmed.includes("：動作＝「")) {
+                    insideBlock = true;
+                    actionTarget = trimmed.split("：")[0]; // 「受信ボタン」など
+                    return;
+                }
+
+                // ブロックの終わり 」 の検知
+                if (insideBlock && trimmed.includes("」")) {
+                    insideBlock = false;
+                    const targetBtn = objects[actionTarget];
+                    if (targetBtn) {
+                        // ボタンがクリックされた時の処理を登録
+                        const codeInside = actionBlock;
+                        targetBtn.onclick = () => {
+                            executeBlock(codeInside);
+                        };
+                    }
+                    actionBlock = "";
+                    return;
+                }
+
+                // ブロックの中身を溜める
+                if (insideBlock) {
+                    actionBlock += trimmed + "。";
+                    return;
+                }
+
+                // 通常の行の実行
+                executeLine(trimmed);
+            });
+        }
+
+        // 1行ずつの命令を処理する
+        function executeLine(line) {
+            // 全角の「！」や「“」を半角に統一して扱いやすくする
+            let s = line.replace(/！/g, "!").replace(/“/g, '"').replace(/”/g, '"').replace(/＝/g, "=");
+
+            // 1. サーバー接続命令
+            if (s.startsWith("サーバー!")) {
+                const id = s.match(/"([^"]+)"/);
+                if (id) {
+                    if (id[1] === "localhost") return; // 自分自身ならスキップ
+                    document.getElementById("server-status").innerText = "接続中...";
+                    peer = new Peer();
+                    peer.on('open', () => {
+                        connection = peer.connect(id[1]);
+                        connection.on('open', () => {
+                            document.getElementById("server-status").innerText = "接続成功";
+                        });
+                    });
+                }
+                return;
+            }
+
+            // 2. オブジェクト作成命令 (例: 受信ボタン=ボタン!“受信” 作る)
+            if (s.includes("=ボタン!\"") && s.includes("作る")) {
+                const varName = s.split("=")[0].trim();
+                const btnText = s.match(/"([^"]+)"/)[1];
+                
+                const btn = document.createElement("button");
+                btn.className = "dr-button";
+                btn.innerText = btnText;
+                stage.appendChild(btn);
+                
+                objects[varName] = btn; // 記憶
+                return;
+            }
+
+            // 3. フィールド作成命令 (例: 表示=フィールド! 作る)
+            if (s.includes("=フィールド!") && s.includes("作る")) {
+                const varName = s.split("=")[0].trim();
+                
+                const input = document.createElement("input");
+                input.type = "text";
+                input.className = "dr-field";
+                stage.appendChild(input);
+                
+                objects[varName] = input; // 記憶
+                return;
+            }
+        }
+
+        // ボタンが押された時、「」の中身を上から実行する
+        function executeBlock(blockCode) {
+            const lines = blockCode.split("。");
+            
+            lines.forEach(line => {
+                let s = line.trim().replace(/！/g, "!").replace(/“/g, '"').replace(/”/g, '"').replace(/＝/g, "=");
+                if (!s) return;
+
+                // 例: 受信メッセージ=サーバー!"msg" 読む
+                if (s.includes("=サーバー!\"msg\"読む")) {
+                    const varName = s.split("=")[0].trim();
+                    objects[varName] = lastReceivedMsg; // 最新の受信メッセージを代入
+                    return;
+                }
+
+                // 例: 表示!(受信メッセージ)書く
+                if (s.includes("!(") && s.includes(")書く")) {
+                    const targetName = s.split("!(")[0].trim(); // 「表示」
+                    const varName = s.match(/\(([^)]+)\)/)[1]; // 「受信メッセージ」
+                    
+                    const element = objects[targetName]; // フィールド要素
+                    const value = objects[varName];       // 中身の文字列
+                    
+                    if (element && value !== undefined) {
+                        element.value = value; // テキストボックスに文字を書き込む！
+                    }
+                    return;
+                }
+            });
+        }
+    </script>
+</body>
+</html>
