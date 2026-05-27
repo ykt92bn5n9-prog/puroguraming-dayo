@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ドリトル完全再現環境（合言葉版）</title>
+    <title>ドリトル環境（裏コマンド搭載版）</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
@@ -36,6 +36,12 @@
             width: 50%; background-color: #ffffff; position: relative; padding: 20px;
             display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
         }
+        
+        /* 最初のメッセージ表示用のスタイル */
+        #normal-text-display {
+            font-size: 30px; font-weight: bold; color: black; margin-bottom: 10px;
+        }
+
         .dr-label { font-size: 12px; color: #666; margin-bottom: -8px; }
         .dr-button { padding: 4px 15px; font-size: 14px; cursor: pointer; }
         .dr-field { padding: 6px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px; width: 250px; }
@@ -58,13 +64,13 @@
         <button onclick="alert('読込機能')">読込</button>
         <label style="font-size: 14px; cursor: pointer;"><input type="checkbox" id="server-checkbox" onchange="toggleServer(this)"> server</label>
         <span id="server-status">オフライン</span>
-        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.ichinomiya(alpha)</span>
+        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.secret(alpha)</span>
     </div>
 
     <div id="main-container">
         <div id="editor-container">
             <div id="line-number">1</div>
-            <textarea id="code-input" placeholder="合言葉「一宮中学校」を入力して実行してね"></textarea>
+            <textarea id="code-input" placeholder="プログラムを入力してね"></textarea>
         </div>
         <div id="stage"></div>
     </div>
@@ -77,10 +83,9 @@
         let connection = null;
         let onReceiveBlock = ""; 
 
-        // 最初は空っぽにします
+        // 最初は空っぽ
         document.getElementById("code-input").value = "";
 
-        // サーバー立ち上げ
         function toggleServer(checkbox) {
             const statusText = document.getElementById("server-status");
             if (checkbox.checked) {
@@ -108,7 +113,6 @@
             });
         }
 
-        // 自動広告
         function insertAutoAd() {
             const adContainer = document.createElement("div");
             adContainer.id = "ad-container";
@@ -130,8 +134,18 @@
 
             let rawCode = document.getElementById("code-input").value.trim();
 
-            // 🌟 新機能：「一宮中学校」という合言葉が打たれたら、チャット用の正式なドリトルコードに化けさせる！
-            if (rawCode === "一宮中学校") {
+            // 🌟 裏コマンドの判定
+            // 「メッセージよ、一宮中学校、喋れ」と打たれたら、普通の文字表示をしつつチャットコードも裏で動かす
+            let isSecretTriggered = false;
+            if (rawCode.replace(/。/g, "") === "メッセージよ、一宮中学校、喋れ") {
+                isSecretTriggered = true;
+                // 通常の文字表示用の要素をステージに作る
+                const normalText = document.createElement("div");
+                normalText.id = "normal-text-display";
+                normalText.innerText = "一宮中学校";
+                stage.appendChild(normalText);
+
+                // 裏でチャット用の正式なドリトルコードに置き換えて解析させる！
                 rawCode = 
 `サーバー！“localhost” 接続。
 送信ボタン＝ボタン！“送信” 作る。
@@ -192,6 +206,17 @@
 
                 executeLine(trimmed);
             });
+
+            // 裏コマンドが発動していない、かつ普通のメッセージ命令だった場合の処理
+            if (!isSecretTriggered && rawCode.includes("、喋れ")) {
+                const tokens = rawCode.replace(/。/g, "").split("、");
+                if (tokens[0] === "メッセージよ" && tokens[2] === "喋れ") {
+                    const normalText = document.createElement("div");
+                    normalText.id = "normal-text-display";
+                    normalText.innerText = tokens[1];
+                    stage.appendChild(normalText);
+                }
+            }
         }
 
         function executeLine(line) {
@@ -264,21 +289,3 @@
 
                 if (s.includes("=サーバー!\"msg\"読む")) {
                     const varName = s.split("=")[0].trim();
-                    objects[varName] = lastReceivedMsg;
-                    return;
-                }
-
-                if (s.includes("!（") && s.includes("）書く")) { s = s.replace(/（/g, "(").replace(/）/g, ")"); }
-                if (s.includes("!(") && s.includes(")書く")) {
-                    const targetName = s.split("!(")[0].trim();
-                    const varName = s.match(/\(([^)]+)\)/)[1];
-                    const element = objects[targetName];
-                    const value = objects[varName];
-                    if (element && value !== undefined) { element.value = value; }
-                    return;
-                }
-            });
-        }
-    </script>
-</body>
-</html>
