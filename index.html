@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ドリトル完全再現環境（広告機能付き）</title>
+    <title>ドリトル完全再現環境（自動広告版）</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
@@ -39,7 +39,10 @@
         .dr-button { padding: 4px 15px; font-size: 14px; cursor: pointer; }
         .dr-field { padding: 4px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px; width: 150px; }
         
-        /* 広告（バナー）の見た目 */
+        /* 🌟 裏で動く広告用のエリア */
+        #ad-container {
+            width: 100%; display: flex; justify-content: center; margin-bottom: 10px;
+        }
         .dr-ad {
             width: 100%; max-width: 400px; height: 60px;
             background: linear-gradient(45deg, #ff9a9e, #fecfef);
@@ -63,7 +66,7 @@
         <button onclick="alert('読込機能')">読込</button>
         <label style="font-size: 14px; cursor: pointer;"><input type="checkbox" id="server-checkbox" onchange="toggleServer(this)"> server</label>
         <span id="server-status">オフライン</span>
-        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.ad(alpha)</span>
+        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.auto-ad(alpha)</span>
     </div>
 
     <div id="main-container">
@@ -71,7 +74,7 @@
             <div id="line-number">1</div>
             <textarea id="code-input" placeholder="ここにドリトルのコードを書いてね"></textarea>
         </div>
-        <div id="stage" id="stage"></div>
+        <div id="stage"></div>
     </div>
 
     <script>
@@ -81,9 +84,9 @@
         let peer = null;
         let connection = null;
 
-        // 初期コード（広告を作るコードをセットしておきます）
+        // 初期コード（画像通りのきれいなコードに戻しました！）
         document.getElementById("code-input").value = 
-`広告表示＝広告！ 作る。
+`サーバー！“localhost” 接続。
 受信ボタン＝ボタン！“受信” 作る。
 表示＝フィールド！ 作る。
 受信ボタン：動作＝「
@@ -107,9 +110,32 @@
             }
         }
 
+        // 🌟 裏で広告を自動生成する関数
+        function insertAutoAd() {
+            const adContainer = document.createElement("div");
+            adContainer.id = "ad-container";
+
+            const adBox = document.createElement("div");
+            adBox.className = "dr-ad";
+            
+            const adTexts = [
+                "今すぐクリック！最強のプログラミング塾",
+                "【限定】ドリトルで遊んでお小遣いを稼ぐ方法！？",
+                "たった5分で分かる！JavaScript超入門書"
+            ];
+            adBox.innerText = adTexts[Math.floor(Math.random() * adTexts.length)];
+            
+            adBox.onclick = () => { window.open("https://github.com", "_blank"); };
+            adContainer.appendChild(adBox);
+            stage.appendChild(adContainer);
+        }
+
         function runDolittle() {
             stage.innerHTML = "";
             objects = {};
+
+            // 🌟 実行時に「裏で」自動的に広告を一番上に挿入する
+            insertAutoAd();
 
             const rawCode = document.getElementById("code-input").value;
             const lines = rawCode.replace(/[\n\r]/g, "").split("。");
@@ -161,33 +187,6 @@
                         connection.on('open', () => { document.getElementById("server-status").innerText = "接続成功"; });
                     });
                 }
-                return;
-            }
-
-            // 🌟 新機能：広告オブジェクトの作成
-            if (s.includes("=広告!") && s.includes("作る")) {
-                const varName = s.split("=")[0].trim();
-                
-                // 広告用の枠（Div）を作る
-                const adBox = document.createElement("div");
-                adBox.className = "dr-ad";
-                
-                // ランダムな広告メッセージを出す
-                const adTexts = [
-                    "今すぐクリック！最強のプログラミング塾",
-                    "【限定】ドリトルで遊んでお小遣いを稼ぐ方法！？",
-                    "たった5分で分かる！JavaScript超入門書"
-                ];
-                const randomText = adTexts[Math.floor(Math.random() * adTexts.length)];
-                adBox.innerText = randomText;
-                
-                // クリックされたら新しいタブで別のページを開く（おまけ機能）
-                adBox.onclick = () => {
-                    window.open("https://github.com", "_blank");
-                };
-
-                stage.appendChild(adBox);
-                objects[varName] = adBox;
                 return;
             }
 
