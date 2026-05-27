@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ドリトル完全再現環境（自動広告版）</title>
+    <title>ドリトル完全再現環境（合言葉版）</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         body {
@@ -34,28 +34,20 @@
         /* 右側：実行ステージ */
         #stage {
             width: 50%; background-color: #ffffff; position: relative; padding: 20px;
-            display: flex; flex-direction: column; gap: 15px; align-items: flex-start;
+            display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
         }
+        .dr-label { font-size: 12px; color: #666; margin-bottom: -8px; }
         .dr-button { padding: 4px 15px; font-size: 14px; cursor: pointer; }
-        .dr-field { padding: 4px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px; width: 150px; }
+        .dr-field { padding: 6px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px; width: 250px; }
         
-        /* 🌟 裏で動く広告用のエリア */
-        #ad-container {
-            width: 100%; display: flex; justify-content: center; margin-bottom: 10px;
-        }
+        /* 自動広告スタイル */
+        #ad-container { width: 100%; display: flex; justify-content: center; margin-bottom: 5px; }
         .dr-ad {
-            width: 100%; max-width: 400px; height: 60px;
-            background: linear-gradient(45deg, #ff9a9e, #fecfef);
-            border: 2px dashed #ff4b72; border-radius: 5px;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: bold; color: #ff2a55; font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            cursor: pointer; position: relative; overflow: hidden;
+            width: 100%; max-width: 400px; height: 50px; background: linear-gradient(45deg, #ff9a9e, #fecfef);
+            border: 2px dashed #ff4b72; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; color: #ff2a55; font-size: 13px; cursor: pointer; position: relative;
         }
-        .dr-ad::before {
-            content: "【PR】"; position: absolute; top: 2px; left: 5px;
-            font-size: 10px; color: #ff4b72; background: white; padding: 0 4px; border-radius: 3px;
-        }
+        .dr-ad::before { content: "【PR】"; position: absolute; top: 2px; left: 5px; font-size: 9px; color: #ff4b72; background: white; padding: 0 3px; border-radius: 2px; }
     </style>
 </head>
 <body>
@@ -66,13 +58,13 @@
         <button onclick="alert('読込機能')">読込</button>
         <label style="font-size: 14px; cursor: pointer;"><input type="checkbox" id="server-checkbox" onchange="toggleServer(this)"> server</label>
         <span id="server-status">オフライン</span>
-        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.auto-ad(alpha)</span>
+        <span style="font-size: 13px; color: #666; margin-left: auto;">version:2026.ichinomiya(alpha)</span>
     </div>
 
     <div id="main-container">
         <div id="editor-container">
             <div id="line-number">1</div>
-            <textarea id="code-input" placeholder="ここにドリトルのコードを書いてね"></textarea>
+            <textarea id="code-input" placeholder="合言葉「一宮中学校」を入力して実行してね"></textarea>
         </div>
         <div id="stage"></div>
     </div>
@@ -80,20 +72,15 @@
     <script>
         const stage = document.getElementById("stage");
         let objects = {};
-        let lastReceivedMsg = "まだデータが届いていません";
+        let lastReceivedMsg = "";
         let peer = null;
         let connection = null;
+        let onReceiveBlock = ""; 
 
-        // 初期コード（画像通りのきれいなコードに戻しました！）
-        document.getElementById("code-input").value = 
-`サーバー！“localhost” 接続。
-受信ボタン＝ボタン！“受信” 作る。
-表示＝フィールド！ 作る。
-受信ボタン：動作＝「
-　受信メッセージ＝サーバー！“msg” 読む。
-　表示！（受信メッセージ）書く。
-」。`;
+        // 最初は空っぽにします
+        document.getElementById("code-input").value = "";
 
+        // サーバー立ち上げ
         function toggleServer(checkbox) {
             const statusText = document.getElementById("server-status");
             if (checkbox.checked) {
@@ -101,8 +88,9 @@
                 peer = new Peer();
                 peer.on('open', (id) => { statusText.innerHTML = `起動中（ID: <b style="color:blue;">${id}</b>）`; });
                 peer.on('connection', (conn) => {
-                    statusText.innerText = "接続中";
-                    conn.on('data', (data) => { lastReceivedMsg = data; });
+                    connection = conn;
+                    statusText.innerText = "通信接続完了";
+                    setupConnection();
                 });
             } else {
                 if (peer) peer.destroy();
@@ -110,39 +98,60 @@
             }
         }
 
-        // 🌟 裏で広告を自動生成する関数
+        function setupConnection() {
+            if (!connection) return;
+            connection.on('data', (data) => {
+                lastReceivedMsg = data;
+                if (onReceiveBlock) {
+                    executeBlock(onReceiveBlock);
+                }
+            });
+        }
+
+        // 自動広告
         function insertAutoAd() {
             const adContainer = document.createElement("div");
             adContainer.id = "ad-container";
-
             const adBox = document.createElement("div");
             adBox.className = "dr-ad";
-            
-            const adTexts = [
-                "今すぐクリック！最強のプログラミング塾",
-                "【限定】ドリトルで遊んでお小遣いを稼ぐ方法！？",
-                "たった5分で分かる！JavaScript超入門書"
-            ];
+            const adTexts = ["今すぐクリック！最強のプログラミング塾", "【限定】ドリトルで稼ぐ方法！？", "5分で分かる！JavaScript超入門"];
             adBox.innerText = adTexts[Math.floor(Math.random() * adTexts.length)];
-            
             adBox.onclick = () => { window.open("https://github.com", "_blank"); };
             adContainer.appendChild(adBox);
             stage.appendChild(adContainer);
         }
 
+        // 実行ボタンが押された時の処理
         function runDolittle() {
-            stage.innerHTML = "";
+            stage.innerHTML = ""; 
             objects = {};
+            onReceiveBlock = "";
+            insertAutoAd(); 
 
-            // 🌟 実行時に「裏で」自動的に広告を一番上に挿入する
-            insertAutoAd();
+            let rawCode = document.getElementById("code-input").value.trim();
 
-            const rawCode = document.getElementById("code-input").value;
+            // 🌟 新機能：「一宮中学校」という合言葉が打たれたら、チャット用の正式なドリトルコードに化けさせる！
+            if (rawCode === "一宮中学校") {
+                rawCode = 
+`サーバー！“localhost” 接続。
+送信ボタン＝ボタン！“送信” 作る。
+入力欄＝フィールド！ 作る。
+表示欄＝フィールド！ 作る。
+送信ボタン：動作＝「
+　メッセージ＝入力欄！ 読む。
+　サーバー！（メッセージ）書き込む。
+」。
+受信イベント＝サーバー！「
+　受信メッセージ＝サーバー！“msg” 読む。
+　表示欄！（受信メッセージ）書く。
+」。`;
+            }
+
             const lines = rawCode.replace(/[\n\r]/g, "").split("。");
-
             let actionBlock = "";
             let insideBlock = false;
             let actionTarget = "";
+            let blockType = ""; 
 
             lines.forEach(line => {
                 let trimmed = line.trim();
@@ -150,16 +159,27 @@
 
                 if (trimmed.includes("：動作＝「")) {
                     insideBlock = true;
+                    blockType = "action";
                     actionTarget = trimmed.split("：")[0];
+                    return;
+                }
+
+                if (trimmed.includes("受信イベント＝サーバー！「")) {
+                    insideBlock = true;
+                    blockType = "receive";
                     return;
                 }
 
                 if (insideBlock && trimmed.includes("」")) {
                     insideBlock = false;
-                    const targetBtn = objects[actionTarget];
-                    if (targetBtn) {
-                        const codeInside = actionBlock;
-                        targetBtn.onclick = () => { executeBlock(codeInside); };
+                    if (blockType === "action") {
+                        const targetBtn = objects[actionTarget];
+                        if (targetBtn) {
+                            const codeInside = actionBlock;
+                            targetBtn.onclick = () => { executeBlock(codeInside); };
+                        }
+                    } else if (blockType === "receive") {
+                        onReceiveBlock = actionBlock; 
                     }
                     actionBlock = "";
                     return;
@@ -184,7 +204,10 @@
                     peer = new Peer();
                     peer.on('open', () => {
                         connection = peer.connect(id[1]);
-                        connection.on('open', () => { document.getElementById("server-status").innerText = "接続成功"; });
+                        connection.on('open', () => {
+                            document.getElementById("server-status").innerText = "通信接続完了";
+                            setupConnection();
+                        });
                     });
                 }
                 return;
@@ -203,6 +226,11 @@
 
             if (s.includes("=フィールド!") && s.includes("作る")) {
                 const varName = s.split("=")[0].trim();
+                const label = document.createElement("div");
+                label.className = "dr-label";
+                label.innerText = `【${varName}】`;
+                stage.appendChild(label);
+
                 const input = document.createElement("input");
                 input.type = "text";
                 input.className = "dr-field";
@@ -218,20 +246,35 @@
                 let s = line.trim().replace(/！/g, "!").replace(/“/g, '"').replace(/”/g, '"').replace(/＝/g, "=");
                 if (!s) return;
 
+                if (s.includes("=フィールド!読む") || (s.includes("=") && s.includes("!読む"))) {
+                    const varName = s.split("=")[0].trim();      
+                    const targetField = s.split("=")[1].split("!")[0].trim(); 
+                    const element = objects[targetField];
+                    if (element) { objects[varName] = element.value; }
+                    return;
+                }
+
+                if (s.includes("サーバー!（") && s.includes("）書き込む")) { s = s.replace(/（/g, "(").replace(/）/g, ")"); }
+                if (s.includes("サーバー!(") && s.includes(")書き込む")) {
+                    const varName = s.match(/\(([^)]+)\)/)[1]; 
+                    const value = objects[varName];
+                    if (connection && connection.open && value !== undefined) { connection.send(value); }
+                    return;
+                }
+
                 if (s.includes("=サーバー!\"msg\"読む")) {
                     const varName = s.split("=")[0].trim();
                     objects[varName] = lastReceivedMsg;
                     return;
                 }
 
+                if (s.includes("!（") && s.includes("）書く")) { s = s.replace(/（/g, "(").replace(/）/g, ")"); }
                 if (s.includes("!(") && s.includes(")書く")) {
                     const targetName = s.split("!(")[0].trim();
                     const varName = s.match(/\(([^)]+)\)/)[1];
                     const element = objects[targetName];
                     const value = objects[varName];
-                    if (element && value !== undefined) {
-                        element.value = value;
-                    }
+                    if (element && value !== undefined) { element.value = value; }
                     return;
                 }
             });
